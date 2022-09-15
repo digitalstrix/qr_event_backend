@@ -14,14 +14,74 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Dirape\Token\Token;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
+use Illuminate\Support\Facades\Storage;
 class CommonController extends Controller
 {
+    public function login(Request $request)
+    {
+        $rules =array(
+            "email" => "required|email",
+            "password" => "required|min:6",
+            "user_type" => "required|in:operator,s_admin,admin,agent",
+        );
+        $validator= Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return $validator->errors();
+        } else {
+
+            if($request->user_type=='s_admin'){
+                if(!Admin::where('email',$request->email)->where('s_admin','1')->first()){
+                    return response(["status" =>"failed", "message"=>"User is not Registered or Invaild User Type"], 401);
+                }
+                $user = Admin::where('email',$request->email)->first();
+                if(!Hash::check($request->password, $user->password)){
+                    return response(["status" =>"failed", "message"=>"Incorrect Password"], 401);
+                }
+            }
+            elseif($request->user_type=="admin"){
+                if(!Admin::where('email',$request->email)->where('s_admin','0')->first()){
+                    return response(["status" =>"failed", "message"=>"User is not Registered or Invaild User Type"], 401);
+                }
+                $user = Admin::where('email',$request->email)->first();
+                if(!Hash::check($request->password, $user->password)){
+                    return response(["status" =>"failed", "message"=>"Incorrect Password"], 401);
+                }
+        }
+        elseif($request->user_type == "operator"){
+            if(!Manager::where('email',$request->email)->where('user_type','operator')->first()){
+                return response(["status" =>"failed", "message"=>"User is not Registered or Invaild User Type"], 401);
+            }
+            $user = Manager::where('email',$request->email)->first();
+            if(!Hash::check($request->password, $user->password)){
+                return response(["status" =>"failed", "message"=>"Incorrect Password"], 401);
+            }
+            }
+        elseif($request->user_type == "agent"){
+            if(!Manager::where('email',$request->email)->where('user_type','agent')->first()){
+                return response(["status" =>"failed", "message"=>"User is not Registered or Invaild User Type"], 401);
+            }
+            $user = Manager::where('email',$request->email)->first();
+            if(!Hash::check($request->password, $user->password)){
+                return response(["status" =>"failed", "message"=>"Incorrect Password"], 401);
+            }
+        }
+            }
+            
+            if ($user){
+                $response = [
+                'user' => $user,
+                "message"=>"User is Logged IN"
+            ];
+                return response($response, 200);
+            }
+            
+        }
     public function register(Request $request)
     {
         $rules =array(
             "name" => "required",
             "company_name" => "required",
-            "email " => "required",
+            "email" => "required",
             "contact" => "required",
             "event_id" => "required",
             "role_id" => "required",
@@ -30,7 +90,7 @@ class CommonController extends Controller
         if ($validator->fails()) {
             return $validator->errors();
         } else {
-            return QrCode::generate("Fuck wdicj wcn");
+            // return QrCode::generate("Fuck wdicj wcn");
             if(User::where('event_id',$request->event_id)->where('contact',$request->contact)->first()){
                 return response(["status" =>"failed", "message"=>"User is Already Registered For Event"], 401);
             }
@@ -43,9 +103,10 @@ class CommonController extends Controller
             $user->role_id=$request->role_id;
             $token_qr = (new Token())->Unique('users', 'qr_token', 20);
             $user->qr_token = $token_qr;
-            // $qr  = QrCode::format('png')->generate($token_qr);
-            // $file =  $qr->store('public/event/qr');
-            // $user->qr_link = $file;
+            $file = 'public/qrcodes/'.$user->qr_token.'.png';
+            $newqrcode = QrCode::format('png')->size(400)->generate($token_qr);
+            Storage::put($file, $newqrcode);
+            $user->qr_link = $file;
             $result= $user->save();
             // if(isset($role_id)){
             //     if(Permission::where('role_id',$role_id)->first()){
@@ -105,9 +166,12 @@ class CommonController extends Controller
                 $user->role_id=$role_id;
                 $token_qr = (new Token())->Unique('users', 'qr_token', 20);
                 $user->qr_token = $token_qr;
-                // $qr  = QrCode::format('png')->generate($token_qr);
-                // $file =  $qr->store('public/event/qr');
-                // $user->qr_link = $file;
+            $file = 'public/qrcodes/'.$user->qr_token.'.png';
+            $newqrcode = QrCode::format('png')->size(400)->generate($token_qr);
+            Storage::put($file, $newqrcode);
+            $user->qr_link = $file;
+            $result= $user->save();
+                $user->qr_link = $file;
                 $result= $user->save();
                 // if(isset($role_id)){
                 //     if(Permission::where('role_id',$role_id)->first()){
@@ -171,6 +235,42 @@ class CommonController extends Controller
             }
         }
     }
+    public function updateManagers(Request $request)
+    {
+        $rules =array(
+            "name" => "required",
+            "email" => "required",
+            "contact" => "required",
+            "event_id" => "required",
+            "user_type" => "required|in:agent,operator",
+            "password" => ""            
+                );
+        $validator= Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return $validator->errors();
+        } else {
+            if(Manager::where('event_id',$request->event_id)->where('email',$request->email)->first()){
+                $user = Manager::where('email',$request->email)->first();
+            }
+            $user->name=$request->name;
+            $user->contact=$request->contact;
+            $user->email=$request->email;
+            $user->event_id=$request->event_id;
+            $user->user_type=$request->user_type;
+            if(isset($user->password))
+            $user->password=Hash::make($user->password);
+            $result= $user->save();
+            if ($result) {
+                $response = [
+                'message' => 'Agent/Operator Updated successfully',
+                'user' => $user,
+            ];
+                return response($response, 200);
+            } else {
+                return response(["status" =>"failed", "message"=>"User is not created"], 401);
+            }
+        }
+    }
     public function registerAdmins(Request $request)
     {
         $rules =array(
@@ -189,10 +289,39 @@ class CommonController extends Controller
             $user = new Admin();
             $user->name=$request->name;
             $user->contact=$request->contact;
-            $user->email=$request->email;
             $user->password=Hash::make($request->password);
             $token_qr = (new Token())->Unique('managers', 'user_token', 60);
             $user->user_token = $token_qr;
+            $result= $user->save();
+            if ($result) {
+                $response = [
+                'message' => 'Admin created successfully',
+                'user' => $user,
+            ];
+                return response($response, 200);
+            } else {
+                return response(["status" =>"failed", "message"=>"User is not created"], 401);
+            }
+        }
+    }
+    public function updateAdmins(Request $request)
+    {
+        $rules =array(
+            "name" => "required",
+            "email" => "required",
+            "contact" => "required",
+            "password" => ""            
+                );
+        $validator= Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return $validator->errors();
+        } else {
+            if(Admin::where('email',$request->email)->first()){
+                $user = Admin::where('email',$request->email)->first();
+            }
+            $user->name=$request->name;
+            $user->contact=$request->contact;
+            $user->password=Hash::make($request->password);
             $result= $user->save();
             if ($result) {
                 $response = [
@@ -234,6 +363,42 @@ class CommonController extends Controller
             if ($result) {
                 $response = [
                 'message' => 'Event created successfully',
+                'Event-Details' => $event,
+            ];
+                return response($response, 200);
+            } else {
+                return response(["status" =>"failed", "message"=>"User is not created"], 401);
+            }
+        }
+    }
+    public function updateevents(Request $request)
+    {
+        $rules =array(
+            "event_id" => "required",
+            "event_name" => "required",
+            "description" => "required",
+            "start" => "required",
+            "end" => "required",           
+            "location" => "required",           
+            "token" => "required"            
+                );
+        $validator= Validator::make($request->all(), $rules);
+        if ($validator->fails()) {
+            return $validator->errors();
+        } else {
+            if(!Admin::where('user_token',$request->token)->first()){
+                return response(["status" =>"failed", "message"=>"Invaild Token"], 401);
+            }
+            $event = Event::where('id',$request->id)->first();
+            $event->event_name = $request->event_name;
+            $event->description = $request->description;
+            $event->start = $request->start;
+            $event->end = $request->end;
+            $event->location = $request->location;
+            $result= $event->save();
+            if ($result) {
+                $response = [
+                'message' => 'Event Updated successfully',
                 'Event-Details' => $event,
             ];
                 return response($response, 200);
